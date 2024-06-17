@@ -1,19 +1,15 @@
-use std::{marker::PhantomData, path::PathBuf};
+use std::path::PathBuf;
 
 use bevy::prelude::*;
-use occule::Codec;
 
-/// Event triggered when a file is decoded using codec C
+/// Event triggered when a file is decoded
 #[derive(Event)]
-pub struct SteganographicFileEvent<C>
-where
-    C: Codec,
+pub struct SteganographicFileEvent
 {
-    pub(crate) _ph: PhantomData<C>,
     /// Path of file
     pub path: PathBuf,
     /// Carrier data with payload extracted
-    pub carrier: Vec<u8>,
+    pub carrier: Option<Vec<u8>>,
     /// Payload data
-    pub payload: Vec<u8>,
+    pub payload: Option<Vec<u8>>,
 }

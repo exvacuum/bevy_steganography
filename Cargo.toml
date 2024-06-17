@@ -1,6 +1,6 @@
 [package]
 name = "bevy_steganography"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
@@ -8,6 +8,9 @@ anyhow = "1.0.86"
 
 [dependencies.bevy]
 version = "0.13"
+
+[dependencies.indexmap]
+version = "2.2"
 
 [dependencies.occule]
 git = "http://github.com/exvacuum/occule"

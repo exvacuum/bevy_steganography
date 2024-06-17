@@ -1,78 +1,72 @@
-use std::{fs, marker::PhantomData, path::PathBuf};
+use std::{fs, path::PathBuf};
 
 use bevy::{ecs::system::Command, prelude::*};
-use occule::{Codec, CodecError};
+use occule::CodecError;
 
-use crate::{events::SteganographicFileEvent, resources::StegoCodec};
+use crate::{events::SteganographicFileEvent, resources::StegoCodecs};
 
 /// Command which loads a file from a path, attempts to decode it, and broadcasts an event
 /// containing decoded data
-struct LoadStegoCommand<C>
-where
-    C: Codec + Send + Sync + 'static,
-{
+struct LoadStegoCommand {
     /// Path of file to decode
     pub path: PathBuf,
-    _ph: PhantomData<C>,
 }
 
-impl<C> Command for LoadStegoCommand<C>
-where
-    C: Codec + Send + Sync + 'static,
-{
+impl Command for LoadStegoCommand {
     fn apply(self, world: &mut World) {
-        let codec = &world.resource::<StegoCodec<C>>().0;
-        let data = fs::read(self.path.clone()).unwrap();
-        match codec.decode(&data) {
-            Ok((carrier, payload)) => {
-                world.send_event(SteganographicFileEvent::<C> {
-                    _ph: PhantomData,
-                    path: self.path,
-                    payload,
-                    carrier,
-                });
-            }
-            Err(e) => match e {
-                CodecError::DataNotEncoded => {
-                    world.send_event(SteganographicFileEvent::<C> {
-                        _ph: PhantomData,
-                        path: self.path,
-                        payload: vec![],
-                        carrier: data,
-                    });
+        let codecs = world.remove_resource::<StegoCodecs>().unwrap();
+        let mut processed = false;
+        let mut data = None;
+        if let Some(extension) = self.path.extension() {
+            let extension = extension.to_string_lossy().to_string();
+            data = Some(fs::read(self.path.clone()).unwrap());
+            let data = data.as_ref().unwrap();
+            for (k, codec) in codecs.0.iter().rev() {
+                if k.contains(&extension) {
+                    match codec.decode(data) {
+                        Ok((carrier, payload)) => {
+                            world.send_event(SteganographicFileEvent {
+                                path: self.path.clone(),
+                                payload: Some(payload),
+                                carrier: Some(carrier),
+                            });
+                            processed = true;
+                            break;
+                        }
+                        Err(e) => match e {
+                            CodecError::DataNotEncoded => {}
+                            _ => warn!("Codec Error: {}", e),
+                        },
+                    }
                 }
-                _ => warn!("Codec Error: {}", e),
-            },
+            }
         }
+        if !processed {
+            world.send_event(SteganographicFileEvent {
+                path: self.path,
+                payload: None,
+                carrier: data,
+            });
+        }
+        world.insert_resource(codecs);
     }
 }
 
-impl<C> LoadStegoCommand<C>
-where
-    C: Codec + Send + Sync + 'static,
-{
+impl LoadStegoCommand {
     fn new(path: PathBuf) -> Self {
-        Self {
-            _ph: PhantomData,
-            path,
-        }
+        Self { path }
     }
 }
 
 /// Extension trait to add steganographic loading command
 pub trait LoadStegoCommands {
     /// Load and decode a file located at the given path. Results will be broadcast as
-    /// `SteganographicFileEvent<C>`s
-    fn load_stego<C>(&mut self, path: PathBuf)
-    where
-        C: Codec + Send + Sync + 'static;
+    /// `SteganographicFileEvent`s
+    fn load_stego(&mut self, path: PathBuf);
 }
 
 impl<'w, 's> LoadStegoCommands for Commands<'w, 's> {
-    fn load_stego<C>(&mut self, path: PathBuf)
-    where
-        C: Codec + Send + Sync + 'static,
-    {
-        self.add(LoadStegoCommand::<C>::new(path));
+    fn load_stego(&mut self, path: PathBuf) {
+        self.add(LoadStegoCommand::new(path));
     }
 }
